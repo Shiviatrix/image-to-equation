@@ -19,8 +19,8 @@ import numpy as np
 import torch
 
 from inference_neural_symbolic import select_rate_distortion_candidate
-from neural_symbolic import ImageToAST, YeganehVocabulary, program_to_source, sequence_cross_entropy
-from synthetic_yeganeh_dataset import SyntheticYeganehDataset, collate_programs, curriculum_phase
+from image_to_equation.neural_symbolic import ImageToAST, YeganehVocabulary, program_to_source, sequence_cross_entropy
+from image_to_equation.synthetic_yeganeh_dataset import SyntheticYeganehDataset, collate_programs, curriculum_phase
 
 
 DEFAULT_VALIDATION_IMAGES = (Path("test_images/structured_control_fish.png"), Path("test_images/natural_einstein.jpg"))

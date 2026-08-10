@@ -14,9 +14,9 @@ import cv2
 import numpy as np
 import torch
 
-from evaluator import GridEvaluator
-from multiscale_fitter import psnr, ssim
-from neural_symbolic import ImageToAST, YeganehVocabulary, program_to_source
+from image_to_equation.evaluator import GridEvaluator
+from image_to_equation.multiscale_fitter import psnr, ssim
+from image_to_equation.neural_symbolic import ImageToAST, YeganehVocabulary, program_to_source
 
 
 def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[ImageToAST, int]:
