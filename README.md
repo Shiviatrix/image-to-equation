@@ -1,45 +1,43 @@
 # ImageToEquation
 
-ImageToEquation converts raster images into purely mathematical Abstract Syntax Trees (ASTs). Instead of storing a grid of pixels (like JPEG/PNG), it mathematically extracts a continuous formula—built from exact polynomial projections, spatial partitions, and trigonometric fields—whose procedural output mathematically resolves into the original image when plotted over an `(x, y)` coordinate plane.
+ImageToEquation converts normal images into mathematical formulas. Instead of storing a grid of pixels like a JPEG or PNG does, it creates a long math equation using basic algebra and trigonometry. When you graph this equation, it draws the original image.
 
-## The Breakthroughs
+## How It Works
 
-The project initially attempted to use Neural-Symbolic gradient descent to force images into a highly restrictive mathematical grammar (the Yeganeh Vocabulary). It failed to capture photorealism without cheating via frequency-domain hacks. 
+At first, this project tried to use machine learning to guess the math formulas, but it struggled with complex photos. We have since completely rewritten the project to use two exact math methods instead of AI:
 
-The architecture has since been completely overhauled into a zero-shot, pure-mathematics procedural graphics engine featuring two state-of-the-art mathematical encoding paradigms:
+### 1. The Polynomial Method
+This method treats the image like a 3D landscape and calculates a massive curve (a 40th-degree polynomial) that perfectly matches the brightness of the image. It then uses a simple cosine wave to draw the final result. It creates smooth, continuous math art.
 
-### 1. Algebraic Halftoning
-Bypassing traditional frequency-domain (DCT) limitations entirely, this engine treats visual entropy as a continuous algebraic plane. It calculates a massive exact mathematical projection to fit a continuous 2D surface (a Degree-40 polynomial with 800+ terms, stabilized by Ridge Regression) to raster pixel data, and maps it flawlessly onto a single procedural trigonometric curve.
-
-### 2. Procedural QuadTree Vector Graphics
-A recursive Binary Space Partitioning (QuadTree) algorithm that structurally parses image data into pure, non-overlapping geometric Boolean intersections (`sdfmask`). This creates a resolution-independent procedural Vector Graphics engine capable of generating colossal 200,000-character, 3,460-node ASTs that evaluate in parallel on the GPU without memory overflow.
+### 2. The Box-Splitting Method (QuadTree)
+This method looks at the image and splits it into smaller and smaller boxes based on how much detail is in each area. It then combines all these boxes into one giant math equation. This method can handle highly detailed photos and creates formulas that are hundreds of thousands of characters long.
 
 ## Project Structure
 
 | Directory | Purpose |
 |------|---------|
-| `assets/` | Original raw images and testing textures. |
-| `docs/` | Formatting specs, vocabularies, and massive LaTeX mathematical proofs. |
-| `src/image_to_equation/` | Core PyTorch mathematical engine (Evaluator, AST Compiler, Shaders). |
-| `experiments/` | Scripts outlining our structural algebraic and geometric breakthroughs. |
-| `outputs/` | Rendered PNG images and colossal raw AST text files. |
-| `tests/` | Benchmark testing and file extraction harnesses. |
+| `assets/` | Original images used for testing. |
+| `docs/` | Project rules and formats. |
+| `src/image_to_equation/` | The core code that turns math into images. |
+| `experiments/` | The scripts that generate the math equations. |
+| `outputs/` | The generated images and text files containing the long equations. |
+| `tests/` | Code for testing the project. |
 
-## Running the Mathematical Extractors
+## Running the Code
 
-The legacy Neural-Symbolic scripts have been removed. You can now execute the true mathematical projections directly from the `experiments/` directory:
+You can generate the math equations by running the scripts in the `experiments/` directory:
 
-**Generate a Procedural QuadTree AST (Vector Graphics):**
+**Generate an equation using the Box-Splitting Method:**
 ```bash
 python3 experiments/geometric_quadtree/generate_quadtree_ast.py
 ```
 
-**Generate a Continuous Algebraic Projection:**
+**Generate an equation using the Polynomial Method:**
 ```bash
 python3 experiments/algebraic_halftoning/generate_algebraic_polynomial.py
 ```
 
-The output AST strings and rendered images will be deposited in the `outputs/` directory.
+The output text files and the final drawn images will be saved in the `outputs/` directory.
 
 ## License
 

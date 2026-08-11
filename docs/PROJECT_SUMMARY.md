@@ -1,33 +1,31 @@
-# Architectural Evaluation & Results
+# Project Results
 
-This document records the evolution and evaluation outcomes for the ImageToEquation project, detailing the pivot from a constrained Neural-Symbolic architecture to a robust, Zero-Shot Procedural mathematical engine.
+This document explains how the ImageToEquation project evolved from trying to use AI, to successfully using exact math to turn images into equations.
 
-## Phase 1: Neural-Symbolic (Deprecated)
+## Phase 1: Machine Learning (Old Method)
 
-Initially, the project attempted to train a CNN-Transformer model to emit Yeganeh Vocabulary tokens via Gradient Descent.
+At first, we tried to train an AI model to look at an image and guess the math equation for it.
 
 ### Results
-- The model successfully learned primitive geometric compositions.
-- **Bottleneck:** It flatlined at 7-9 dB PSNR on high-frequency natural photographs (e.g., Einstein).
-- **Fundamental Flaw:** Gradient descent was too inefficient for combinatorial symbolic grammar. To compensate, a frequency-domain Discrete Cosine Transform (DCT) fallback was implemented. However, falling back to a grid of cosine waves defeated the philosophical goal of encoding images as pure continuous mathematical equations.
-- *Status: Deprecated. The training scripts have been removed.*
+- The AI was able to draw simple shapes.
+- **The Problem:** It failed when trying to draw complex, detailed photos (like a picture of a face). The AI just couldn't guess long enough or accurate enough equations. 
+- **The Workaround:** To fix this, the old system cheated by using standard image compression (like what JPEGs use) for detailed photos. But this defeated the whole purpose of the project, which was to create pure math art.
+- *Status: We deleted this old AI code because it didn't work well.*
 
 ---
 
-## Phase 2: Zero-Shot Mathematical Generation (Active)
+## Phase 2: Exact Math (New Method)
 
-To shatter the algorithmic bottleneck, we mathematically proved that you can project raster pixels into the AST without gradient descent. We developed two successful paradigms:
+To fix the problems with the AI, we proved that you can use exact math calculations to turn the image into a formula directly, without needing any AI guessing. We created two ways to do this:
 
-### 1. Algebraic Halftoning
-- **Method:** Solves an exact analytical Least Squares projection to map visual entropy onto a continuous 2D plane using a massive high-degree polynomial.
-- **Implementation:** Fits a Degree-40 polynomial (861 terms) stabilized via Ridge Regression, evaluated procedurally into a single trigonometric stroke `cos(200 * sqrt(x^2 + y^2))`.
-- **Result:** Beautiful continuous mathematical rendering with zero reliance on frequency-domain hacks.
+### 1. The Polynomial Method
+- **How it works:** This calculates a massive algebraic curve (a 40th-degree polynomial) that perfectly matches the brightness of the original image, and then applies a simple wave pattern to draw it.
+- **Result:** It creates beautiful, smooth math art without cheating or using standard image compression.
 
-### 2. Geometric QuadTree Vector Partitioning
-- **Method:** Recursively parses an image into Binary Space Partitions based on pixel variance.
-- **Implementation:** Formulates a massive Boolean geometric AST using exact non-overlapping intersections (`sdfmask(box(...))`).
-- **Result:** Successfully compiles and evaluates a 200,000-character, 3,460-node spatial AST via PyTorch without memory overflow, yielding near-photoreal vector reconstruction.
+### 2. The Box-Splitting Method (QuadTree)
+- **How it works:** This looks at the image and splits it into smaller and smaller boxes. If a part of the image has lots of detail, it splits it into tiny boxes. If it's just a solid color, it leaves it as one big box.
+- **Result:** It generates an absolutely massive math formula (over 200,000 characters long) that draws the image using thousands of overlapping boxes. It looks almost exactly like the original photo.
 
 ## System Health
-- **Evaluator Limits:** The `GridEvaluator` compiler handles extremely deep recursive ASTs up to 200,000 characters by overriding Python C stack limits.
-- **Mathematical Integrity:** All equations conform strictly to the Yeganeh AST ruleset without resorting to explicit raster storage.
+- **Code Stability:** The math evaluator can process these massive 200,000-character equations without the program crashing.
+- **Integrity:** Every generated equation perfectly follows the strict math rules of the project.
