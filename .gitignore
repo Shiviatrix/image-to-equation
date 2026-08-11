@@ -80,3 +80,4 @@ test_images/
 i2e-viewer/node_modules/
 i2e-viewer/.svelte-kit/
 i2e-viewer/build/
+presentation_assets/
