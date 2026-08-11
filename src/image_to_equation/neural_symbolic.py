@@ -25,13 +25,14 @@ import torch.nn.functional as F
 
 
 SPECIAL_TOKENS = ("<pad>", "<bos>", "<eos>")
-LEAVES = ("x", "y")
+LEAVES = ("x", "y", "t0", "t1", "t2")
 # The synthetic curriculum retains a single smooth-union token as a codec
 # composition operator.  It is not presented as a historical claim about
 # Yeganeh; sin/cosine/powers remain the strict stylistic core.
-UNARY = ("sin", "cos", "neg", "pow2")
-BINARY = ("add", "sub", "mul", "div")
+UNARY = ("sin", "cos", "neg", "pow2", "dexp", "acos", "atan", "exp", "abs", "fmap")
+BINARY = ("add", "sub", "mul", "div", "atan2", "let")
 TERNARY = ("smin",)
+QUINTARY = ("trignoise",)
 SCENE = "SCENE"
 
 
@@ -48,7 +49,7 @@ class YeganehVocabulary:
             raise ValueError("constant_bins must be at least 3")
         self.constant_bins = constant_bins
         tokens = list(SPECIAL_TOKENS) + [SCENE] + list(LEAVES) + list(UNARY)
-        tokens += list(BINARY) + list(TERNARY)
+        tokens += list(BINARY) + list(TERNARY) + list(QUINTARY)
         tokens += [f"C{index:02d}" for index in range(constant_bins)]
         self.tokens = tuple(tokens)
         self.token_to_id = {token: index for index, token in enumerate(self.tokens)}
@@ -92,6 +93,8 @@ class YeganehVocabulary:
             return 2
         if token in TERNARY:
             return 3
+        if token in QUINTARY:
+            return 5
         raise ValueError(f"unknown AST token: {token}")
 
 
@@ -120,7 +123,7 @@ class GrammarState:
             return [vocabulary.eos_id]
         allowed = list(LEAVES) + [token for token in vocabulary.tokens if vocabulary.is_constant(token)]
         if self.node_count < max_nodes:
-            allowed += list(UNARY) + list(BINARY) + list(TERNARY)
+            allowed += list(UNARY) + list(BINARY) + list(TERNARY) + list(QUINTARY)
         return [vocabulary.token_to_id[token] for token in allowed]
 
     def consume(self, token: str, vocabulary: YeganehVocabulary) -> None:
@@ -148,7 +151,7 @@ class GrammarState:
         self.node_count += 1
 
 
-def validate_program(tokens: Sequence[str], vocabulary: YeganehVocabulary, max_nodes: int = 96) -> None:
+def validate_program(tokens: Sequence[str], vocabulary: YeganehVocabulary, max_nodes: int = 160) -> None:
     """Raise ``ValueError`` unless *tokens* form a complete safe prefix AST."""
     state = GrammarState()
     for token in tokens:
@@ -162,7 +165,9 @@ def validate_program(tokens: Sequence[str], vocabulary: YeganehVocabulary, max_n
         raise ValueError("incomplete program; append EOS only after all child slots close")
 
 
-def _parse_field(tokens: Sequence[str], vocabulary: YeganehVocabulary, cursor: int = 0) -> tuple[str, int]:
+def _parse_field(tokens: Sequence[str], vocabulary: YeganehVocabulary, cursor: int = 0, state: dict | None = None) -> tuple[str, int]:
+    if state is None:
+        state = {"let_count": 0}
     token = tokens[cursor]
     arity = vocabulary.arity(token)
     if arity == 0:
@@ -172,7 +177,7 @@ def _parse_field(tokens: Sequence[str], vocabulary: YeganehVocabulary, cursor: i
     children: list[str] = []
     position = cursor + 1
     for _ in range(arity):
-        child, position = _parse_field(tokens, vocabulary, position)
+        child, position = _parse_field(tokens, vocabulary, position, state)
         children.append(child)
     if token == "add":
         return f"({children[0]}+{children[1]})", position
@@ -182,14 +187,34 @@ def _parse_field(tokens: Sequence[str], vocabulary: YeganehVocabulary, cursor: i
         return f"({children[0]}*{children[1]})", position
     if token == "div":
         return f"({children[0]}/({children[1]}+0.0001))", position
+    if token == "atan2":
+        return f"atan2({children[0]},{children[1]})", position
+    if token == "let":
+        var_name = f"t{state['let_count']}"
+        state['let_count'] += 1
+        return f"let({var_name},{children[0]},{children[1]})", position
     if token == "neg":
         return f"(-{children[0]})", position
     if token == "pow2":
         return f"(({children[0]})^2)", position
-    if token in {"sin", "cos"}:
+    if token == "dexp":
+        return f"dexp_mask({children[0]},1000.0)", position
+    if token in {"sin", "cos", "acos", "atan", "exp", "abs"}:
         return f"{token}({children[0]})", position
+    if token == "fmap":
+        return f"fmap({children[0]})", position
     if token == "smin":
         return f"smin({children[0]},{children[1]},abs({children[2]}))", position
+    if token == "trignoise":
+        # Convert the 5th continuous constant argument to an integer octave count 1..8
+        try:
+            # We emitted it as a constant string like '(-1.25)' if it was a constant,
+            # or it might be a nested expression. The dataset guarantees it's a constant.
+            val_str = children[4].strip("()")
+            octaves = max(1, min(MAX_FBM_OCTAVES, int(round((float(val_str) + 2.0) * 1.75 + 1))))
+        except Exception:
+            octaves = 4
+        return f"trignoise({children[0]},{children[1]},{children[2]},{children[3]},{octaves})", position
     raise ValueError(f"cannot emit unknown token {token}")
 
 
@@ -267,7 +292,7 @@ class ImageToAST(nn.Module):
         d_model: int = 192,
         layers: int = 4,
         heads: int = 6,
-        max_length: int = 96,
+        max_length: int = 192,
     ) -> None:
         super().__init__()
         self.vocabulary = vocabulary or YeganehVocabulary()

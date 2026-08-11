@@ -29,8 +29,8 @@ from typing import Sequence
 import torch
 from torch.utils.data import Dataset
 
-from evaluator import GridEvaluator
-from neural_symbolic import YeganehVocabulary, program_to_source
+from image_to_equation.evaluator import GridEvaluator
+from image_to_equation.neural_symbolic import YeganehVocabulary, program_to_source
 
 
 def _prefix(*items: str | list[str]) -> list[str]:
@@ -73,12 +73,19 @@ def _smin(left: list[str], right: list[str], vocabulary: YeganehVocabulary, shar
 
 
 def curriculum_phase(step: int) -> int:
-    """Three-stage schedule keyed to optimiser updates, not raster epochs."""
     if step < 5_000:
         return 1
-    if step < 20_000:
+    if step < 15_000:
         return 2
-    return 3
+    if step < 30_000:
+        return 3
+    if step < 45_000:
+        return 4
+    if step < 60_000:
+        return 5
+    if step < 75_000:
+        return 6
+    return 7
 
 
 def _circle_field(vocabulary: YeganehVocabulary, rng: random.Random, central: bool) -> list[str]:
@@ -132,6 +139,54 @@ def _trig_band_field(vocabulary: YeganehVocabulary, rng: random.Random) -> list[
     return _sub(_pow2(_sub(["y"], path)), _constant(vocabulary, rng.uniform(0.002, 0.012)))
 
 
+def _trignoise_field(vocabulary: YeganehVocabulary, rng: random.Random) -> list[str]:
+    base_freq = rng.uniform(2.0, 25.0)
+    lacunarity = rng.uniform(1.2, 2.5)
+    octaves = rng.choice((1, 2, 3, 4, 5))
+    return _prefix(
+        "trignoise",
+        ["x"],
+        ["y"],
+        _constant(vocabulary, base_freq),
+        _constant(vocabulary, lacunarity),
+        _constant(vocabulary, float(octaves)),
+    )
+
+
+def _polar_field(vocabulary: YeganehVocabulary, rng: random.Random) -> list[str]:
+    cx, cy = rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7)
+    dx = _sub(["x"], _constant(vocabulary, cx))
+    dy = _sub(["y"], _constant(vocabulary, cy))
+    angle = _prefix("atan2", dy, dx)
+    freq = _constant(vocabulary, rng.choice((1, 2, 3, 4, 5)))
+    scale = _constant(vocabulary, rng.uniform(5.0, 20.0))
+    radius_sq = _add(_pow2(dx), _pow2(dy))
+    return _sin(_add(_mul(freq, angle), _mul(scale, radius_sq)))
+
+def _groundtruth_carrier(vocabulary: YeganehVocabulary, rng: random.Random, s: int) -> list[str]:
+    """An exact Yeganeh rotated trigonometric carrier wave: cos(scale * (cos(a)x + sin(a)y) + phase)."""
+    s_f = float(s)
+    scale = _constant(vocabulary, min(2.0, (11.0 / 10.0)**s_f))
+    angle = rng.uniform(-math.pi, math.pi)
+    phase = _constant(vocabulary, rng.uniform(-2.0, 2.0))
+    # u = cos(a)x + sin(a)y
+    u = _add(
+        _mul(_constant(vocabulary, math.cos(angle)), ["x"]),
+        _mul(_constant(vocabulary, math.sin(angle)), ["y"])
+    )
+    return _cos(_add(_mul(scale, u), phase))
+
+def _groundtruth_texture(vocabulary: YeganehVocabulary, rng: random.Random, depth: int) -> list[str]:
+    """Exact hierarchical summation E(x,y) = sum w_s T_s(x,y)."""
+    if depth <= 1:
+        return _groundtruth_carrier(vocabulary, rng, 1)
+    weight = _constant(vocabulary, rng.uniform(0.6, 0.9))
+    return _add(
+        _groundtruth_carrier(vocabulary, rng, depth),
+        _mul(weight, _groundtruth_texture(vocabulary, rng, depth - 1))
+    )
+
+
 def _high_contrast_palette(rng: random.Random) -> tuple[list[float], list[float]]:
     """Never emit black-on-black or near-flat scenes, a collapse trigger."""
     background = [rng.uniform(0.10, 0.85) for _ in range(3)]
@@ -154,12 +209,38 @@ def sample_program(vocabulary: YeganehVocabulary, rng: random.Random, step: int 
         field = _smin(first, second, vocabulary)
         if rng.random() < 0.35:
             field = _smin(field, _circle_field(vocabulary, rng, central=False), vocabulary)
-    else:
+    elif phase == 3:
         # The band is the rasterised form of a ruled trigonometric sweep; the
         # ellipse applies the documented complex-plane rotation concept.
         field = _smin(_trig_band_field(vocabulary, rng), _ellipse_field(vocabulary, rng), vocabulary)
         if rng.random() < 0.65:
             field = _smin(field, _trig_band_field(vocabulary, rng), vocabulary)
+    elif phase == 4:
+        # Textured shapes
+        shape = _circle_field(vocabulary, rng, central=False) if rng.random() < 0.5 else _ellipse_field(vocabulary, rng)
+        texture = _trignoise_field(vocabulary, rng)
+        field = _add(shape, _mul(_constant(vocabulary, rng.uniform(0.01, 0.1)), texture))
+        if rng.random() < 0.5:
+            field = _prefix("dexp", field)
+    elif phase == 5:
+        # Layered compositions with dexp mask
+        first = _prefix("dexp", _circle_field(vocabulary, rng, central=False))
+        second = _prefix("dexp", _ellipse_field(vocabulary, rng))
+        field = _smin(first, second, vocabulary)
+    elif phase == 6:
+        # Polar constructions & true hierarchical texture
+        polar_tex = _polar_field(vocabulary, rng)
+        texture = _groundtruth_texture(vocabulary, rng, depth=rng.choice((2, 3, 4)))
+        shape = _circle_field(vocabulary, rng, central=True)
+        field = _add(shape, _mul(_constant(vocabulary, rng.uniform(0.05, 0.2)), texture))
+        if rng.random() < 0.5:
+            field = _prefix("dexp", field)
+    else:
+        # Let bindings with exact texture and nested masking
+        tex = _groundtruth_texture(vocabulary, rng, depth=3)
+        c1 = _add(_circle_field(vocabulary, rng, central=True), _mul(_constant(vocabulary, 0.1), ["t0"]))
+        c2 = _add(_circle_field(vocabulary, rng, central=False), _mul(_constant(vocabulary, 0.1), ["t0"]))
+        field = _prefix("let", tex, _smin(c1, c2, vocabulary))
     return _prefix(
         "SCENE",
         *[_constant(vocabulary, value) for value in background + foreground + [edge]],

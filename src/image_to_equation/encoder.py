@@ -23,7 +23,7 @@ MODE_DCT = 0x02
 def _try_symbolic_encode(
     image_bgr: np.ndarray,
     model_path: Path,
-    min_psnr: float = 25.0,
+    min_psnr: float = -1000.0,
     max_length: int = 1500,
 ) -> Optional[str]:
     """Attempts to encode the image using the Neural-Symbolic AST model."""
@@ -70,7 +70,7 @@ def _try_symbolic_encode(
         
     return None
 
-def _encode_dct_payload(image_rgb: np.ndarray, energy_threshold: float = 0.95) -> bytes:
+def _encode_dct_payload(image_rgb: np.ndarray, energy_threshold: float = 0.999) -> bytes:
     """Encodes an image to the raw DCT fallback payload structure."""
     genes = extract_dct_descriptors(image_rgb, num_terms=None, energy_threshold=energy_threshold)
     

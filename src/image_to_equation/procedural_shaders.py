@@ -240,6 +240,61 @@ def over(background: Tensor, foreground: Tensor, alpha: Tensor) -> Tensor:
     return fg * a + bg * (1.0 - a)
 
 
+def yeganeh_trig_noise(
+    x: Tensor,
+    y: Tensor,
+    base_frequency: Tensor,
+    lacunarity: Tensor,
+    octaves: int,
+) -> Tensor:
+    """A bounded-octave, multi-octave rotated trigonometric noise function."""
+    if not isinstance(octaves, int) or not 1 <= octaves <= MAX_FBM_OCTAVES:
+        raise ValueError(f"octaves must be an integer in [1, {MAX_FBM_OCTAVES}]")
+        
+    total: Tensor | Number = 0.0
+    f = _positive_frequency(base_frequency)
+    lac = torch.clamp(torch.abs(lacunarity), 1.05, 10.0)
+    
+    for s in range(1, octaves + 1):
+        sf = float(s)
+        current_freq = f * (lac ** sf)
+        
+        c7 = math.cos(7.0 * sf)
+        s7 = math.sin(7.0 * sf)
+        c8 = math.cos(8.0 * sf)
+        s8 = math.sin(8.0 * sf)
+        c10 = math.cos(10.0 * sf)
+        c15 = math.cos(15.0 * sf)
+        c17 = math.cos(17.0 * sf)
+        c5 = math.cos(5.0 * sf)
+        
+        rot1 = c7 * x + s7 * y
+        rot2 = c7 * y - s7 * x
+        rot3 = c8 * x + s8 * y
+        
+        term1 = torch.cos(current_freq * (1.0 + c10) * (rot1 + 2.0 * c17) + 4.0 * torch.cos(current_freq * rot1) + 2.0 * c5)
+        term2 = torch.cos(current_freq * (1.0 + c10) * (rot2 + 2.0 * c15) + 4.0 * torch.cos(current_freq * rot3) + 2.0 * c7)
+        
+        total = total + term1 * term2
+        
+    return total / float(octaves)
+
+
+def dexp_mask(distance: Tensor, sharpness: Tensor) -> Tensor:
+    """The Yeganeh double-exponential hard mask."""
+    s = torch.clamp(torch.abs(sharpness), min=1.0)
+    return torch.exp(-torch.exp(torch.clamp(-s * distance, max=80.0)))
+
+
+def polar_r(x: Tensor, y: Tensor, cx: Tensor, cy: Tensor) -> Tensor:
+    """Returns the radius from (cx, cy)."""
+    return torch.hypot(x - cx, y - cy)
+
+def polar_theta(x: Tensor, y: Tensor, cx: Tensor, cy: Tensor) -> Tensor:
+    """Returns the angle from (cx, cy)."""
+    return torch.atan2(y - cy, x - cx)
+
+
 __all__ = [
     "MAX_FBM_OCTAVES",
     "affine_gradient",
@@ -247,6 +302,10 @@ __all__ = [
     "value_noise2",
     "gradient_noise2",
     "fractal_brownian_motion",
+    "yeganeh_trig_noise",
+    "dexp_mask",
+    "polar_r",
+    "polar_theta",
     "rgb",
     "shade",
     "over",

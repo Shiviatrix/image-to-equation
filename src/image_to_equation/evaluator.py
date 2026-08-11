@@ -6,7 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import List, Dict, Any, Callable, Tuple, Union, Optional, OrderedDict as OrderedDictType
 
-from procedural_shaders import (
+from image_to_equation.procedural_shaders import (
     MAX_FBM_OCTAVES,
     affine_gradient,
     bilinear_gradient,
@@ -16,6 +16,10 @@ from procedural_shaders import (
     rgb as shader_rgb,
     shade as shader_shade,
     value_noise2,
+    yeganeh_trig_noise,
+    dexp_mask,
+    polar_r,
+    polar_theta,
 )
 
 sys.setrecursionlimit(10000)
@@ -111,6 +115,12 @@ class ProdLoop(ASTNode):
     end: int
     expr: ASTNode
 
+@dataclass
+class LetBinding(ASTNode):
+    name: str
+    value_expr: ASTNode
+    body_expr: ASTNode
+
 # ==========================================
 # 3. Parser (Recursive Descent)
 # ==========================================
@@ -186,23 +196,31 @@ class Parser:
                 # Function call, sum, or prod
                 self.consume(expected_value='(')
                 
-                if name in ('sum', 'prod'):
+                if name in ('sum', 'prod', 'let'):
                     var_tok = self.consume(expected_type='ID')
-                    self.consume(expected_value='=')
-                    start_tok = self.consume(expected_type='NUM')
-                    self.consume(expected_type='DOTDOT')
-                    end_tok = self.consume(expected_type='NUM')
-                    self.consume(expected_value=',')
-                    inner_expr = self.expr()
-                    self.consume(expected_value=')')
-                    
-                    start_val = int(float(start_tok.value))
-                    end_val = int(float(end_tok.value))
-                    
-                    if name == 'sum':
-                        return SumLoop(var_tok.value, start_val, end_val, inner_expr)
+                    if name == 'let':
+                        self.consume(expected_value=',')
+                        value_expr = self.expr()
+                        self.consume(expected_value=',')
+                        body_expr = self.expr()
+                        self.consume(expected_value=')')
+                        return LetBinding(var_tok.value, value_expr, body_expr)
                     else:
-                        return ProdLoop(var_tok.value, start_val, end_val, inner_expr)
+                        self.consume(expected_value='=')
+                        start_tok = self.consume(expected_type='NUM')
+                        self.consume(expected_type='DOTDOT')
+                        end_tok = self.consume(expected_type='NUM')
+                        self.consume(expected_value=',')
+                        inner_expr = self.expr()
+                        self.consume(expected_value=')')
+                        
+                        start_val = int(float(start_tok.value))
+                        end_val = int(float(end_tok.value))
+                        
+                        if name == 'sum':
+                            return SumLoop(var_tok.value, start_val, end_val, inner_expr)
+                        else:
+                            return ProdLoop(var_tok.value, start_val, end_val, inner_expr)
                 else:
                     args = [self.expr()]
                     while self.current().value == ',':
@@ -303,8 +321,8 @@ class Compiler:
                 'acos': lambda x: torch.acos(torch.clamp(x, -1.0, 1.0)),
                 'arctan': torch.atan,
                 'atan': torch.atan,
-                'exp': safe_exp,
-                'doubleexp': safe_double_exp,
+                'exp': torch.exp,
+                'fmap': lambda x: 255.0 * torch.exp(-torch.exp(-1000.0 * torch.clamp(x, -1.0, 2.0))) * torch.pow(torch.abs(torch.clamp(x, -1.0, 2.0)) + 1e-9, torch.clamp(torch.exp(-1000.0 * (torch.clamp(x, -1.0, 2.0) - 1.0)), max=100.0)),
                 'dexp': safe_double_exp,
                 'log': lambda x: torch.log(torch.clamp(x, min=1e-12)),
                 'abs': torch.abs,
@@ -367,6 +385,47 @@ class Compiler:
             if node.name in ('atan2', 'arctan2'):
                 require_arity(2)
                 return lambda env: torch.atan2(*args(env))
+                
+            if node.name in ('trignoise', 'yeganeh_trig_noise'):
+                if len(node.args) != 5:
+                    raise ValueError(
+                        f"Function '{node.name}' expects 5 arguments, got {len(node.args)}"
+                    )
+                octave_node = node.args[4]
+                if not isinstance(octave_node, Constant) or not float(octave_node.value).is_integer():
+                    raise ValueError(
+                        "trignoise's octave count must be an integer literal, not a fitted expression"
+                    )
+                octaves = int(octave_node.value)
+                if not 1 <= octaves <= MAX_FBM_OCTAVES:
+                    raise ValueError(
+                        f"trignoise's octave count must be in [1, {MAX_FBM_OCTAVES}]"
+                    )
+                x_fn, y_fn, base_freq_fn, lacunarity_fn = [
+                    self.compile(arg) for arg in node.args[:4]
+                ]
+
+                def trignoise_eval(env):
+                    return yeganeh_trig_noise(
+                        x_fn(env),
+                        y_fn(env),
+                        base_freq_fn(env),
+                        lacunarity_fn(env),
+                        octaves,
+                    )
+                return trignoise_eval
+                
+            if node.name in ('dexp_mask', 'dexpmask'):
+                require_arity(2)
+                return lambda env: dexp_mask(*args(env))
+                
+            if node.name == 'polar_r':
+                require_arity(4)
+                return lambda env: polar_r(*args(env))
+                
+            if node.name == 'polar_theta':
+                require_arity(4)
+                return lambda env: polar_theta(*args(env))
 
             if node.name in ('affine', 'agrad', 'linear_gradient'):
                 require_arity(5)
@@ -645,6 +704,23 @@ class Compiler:
                         env.pop(var_name, None)
                 return total
             return prod_eval
+
+        elif isinstance(node, LetBinding):
+            value_fn = self.compile(node.value_expr)
+            body_fn = self.compile(node.body_expr)
+            var_name = node.name
+            
+            def let_eval(env):
+                old_val = env.get(var_name)
+                env[var_name] = value_fn(env)
+                try:
+                    return body_fn(env)
+                finally:
+                    if old_val is not None:
+                        env[var_name] = old_val
+                    else:
+                        env.pop(var_name, None)
+            return let_eval
 
         raise NotImplementedError(f"Unsupported AST node: {type(node)}")
 

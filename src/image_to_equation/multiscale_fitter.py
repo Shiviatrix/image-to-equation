@@ -40,7 +40,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from symbolic_fitter import Primitive, normalized_grid
+from image_to_equation.symbolic_fitter import Primitive, normalized_grid
 
 
 _EPS = 1e-6
